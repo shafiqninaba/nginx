@@ -4,17 +4,42 @@
 send_health_check() {
     endpoint=$1
     echo "Sending health check to: $endpoint"
-    wget -q -O /dev/null --timeout=5 "$endpoint" 2>/dev/null || \
-    curl -sf --max-time 5 "$endpoint" > /dev/null 2>&1 || \
+    wget -q -O /dev/null --timeout=5 "http://$endpoint" 2>/dev/null || \
+    curl -sf --max-time 5 "http://$endpoint" > /dev/null 2>&1 || \
     echo "Health check failed or service not yet ready: $endpoint"
 }
 
-# Start with the template
-cp /etc/nginx/nginx.conf.template /etc/nginx/nginx.conf
+# Generate nginx configuration
+echo "Generating nginx configuration..."
 
-# Configure proxy locations
-# Expected format: /api->https://primary.railway.app,/admin->https://admin.railway.app
-proxy_config=""
+# Start building the config file
+cat > /etc/nginx/nginx.conf <<'EOF_START'
+events {
+    worker_connections 1024;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # Logging
+    access_log /var/log/nginx/access.log;
+    error_log /var/log/nginx/error.log;
+
+    # Basic settings
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    types_hash_max_size 2048;
+
+    server {
+        listen 80;
+        server_name _;
+
+EOF_START
+
+# Add proxy locations
 if [ -n "$PROXY_ROUTES" ]; then
     echo "Proxy routes configured: $PROXY_ROUTES"
 
@@ -28,12 +53,12 @@ if [ -n "$PROXY_ROUTES" ]; then
 
             echo "Configuring proxy: $path -> $target"
 
-            proxy_config="${proxy_config}
+            cat >> /etc/nginx/nginx.conf <<EOF_PROXY
         location $path {
-            proxy_pass ${target};
+            proxy_pass http://${target};
             proxy_http_version 1.1;
             proxy_set_header Upgrade \$http_upgrade;
-            proxy_set_header Connection \"upgrade\";
+            proxy_set_header Connection "upgrade";
             proxy_set_header Host \$host;
             proxy_set_header X-Real-IP \$remote_addr;
             proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -42,25 +67,15 @@ if [ -n "$PROXY_ROUTES" ]; then
             proxy_read_timeout 300s;
             proxy_send_timeout 300s;
         }
-"
+
+EOF_PROXY
         fi
     done
-fi
-
-# Replace proxy placeholder
-if [ -n "$proxy_config" ]; then
-    # Escape special characters for sed
-    escaped_proxy=$(echo "$proxy_config" | sed 's/[\/&]/\\&/g')
-    sed -i "s|# PROXY_LOCATIONS_PLACEHOLDER|${proxy_config}|g" /etc/nginx/nginx.conf
-    echo "Proxy locations configured"
 else
-    sed -i "s|# PROXY_LOCATIONS_PLACEHOLDER||g" /etc/nginx/nginx.conf
     echo "No proxy routes configured"
 fi
 
-# Configure health check locations
-# Expected format: https://service1.com/health,https://service2.com/health,https://service3.com/health
-health_check_config=""
+# Add health check locations
 health_check_endpoints=""
 if [ -n "$HEALTH_CHECK_ENDPOINTS" ]; then
     echo "Health check endpoints configured: $HEALTH_CHECK_ENDPOINTS"
@@ -73,18 +88,20 @@ if [ -n "$HEALTH_CHECK_ENDPOINTS" ]; then
         if [ -n "$endpoint" ]; then
             echo "Configuring health check location for: $endpoint"
 
-            health_check_config="${health_check_config}
+            cat >> /etc/nginx/nginx.conf <<EOF_HEALTH
         location /health/service${counter} {
-            proxy_pass ${endpoint};
+            proxy_pass http://${endpoint};
             proxy_http_version 1.1;
-            proxy_set_header Connection \"\";
+            proxy_set_header Connection "";
             proxy_set_header Host \$host;
             proxy_connect_timeout 5s;
             proxy_read_timeout 10s;
-            proxy_set_header X-Health-Check \"true\";
+            proxy_set_header X-Health-Check "true";
             access_log off;
         }
-"
+
+EOF_HEALTH
+
             # Store for later health check sending
             if [ -z "$health_check_endpoints" ]; then
                 health_check_endpoints="$endpoint"
@@ -94,16 +111,23 @@ if [ -n "$HEALTH_CHECK_ENDPOINTS" ]; then
             counter=$((counter + 1))
         fi
     done
-fi
-
-# Replace health check placeholder
-if [ -n "$health_check_config" ]; then
-    sed -i "s|# HEALTH_CHECK_LOCATIONS_PLACEHOLDER|${health_check_config}|g" /etc/nginx/nginx.conf
-    echo "Health check locations configured"
 else
-    sed -i "s|# HEALTH_CHECK_LOCATIONS_PLACEHOLDER||g" /etc/nginx/nginx.conf
     echo "No health check endpoints configured"
 fi
+
+# Add static file serving (fallback)
+cat >> /etc/nginx/nginx.conf <<'EOF_END'
+        # Serve static site content (fallback)
+        location / {
+            root /usr/share/nginx/html;
+            index index.html;
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}
+EOF_END
+
+echo "Nginx configuration generated"
 
 # Test nginx configuration
 echo "Testing nginx configuration..."
@@ -145,6 +169,7 @@ if [ $? -eq 0 ]; then
     done
 else
     echo "Nginx configuration test failed!"
+    echo "Generated config:"
     cat /etc/nginx/nginx.conf
     exit 1
 fi
