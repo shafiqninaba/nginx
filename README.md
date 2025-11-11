@@ -15,10 +15,23 @@ This is an NGINX deployment that acts as a public entry point and automatically 
 
 ## 💁‍♀️ How to use
 
-### 1. Configure Environment Variable in Railway
+### 1. Configure Environment Variables in Railway
 
-In your Railway NGINX service settings, add the following environment variable:
+In your Railway NGINX service settings, add the following environment variables:
 
+**PROXY_ROUTES** (required) - Define which paths should be proxied to your services:
+```
+PROXY_ROUTES=/api->https://primary-production-xxxx.up.railway.app
+```
+
+Format: `path->target_url,path2->target_url2`
+
+Examples:
+- Route all `/api/*` to Primary: `/api->https://primary.railway.app`
+- Multiple routes: `/api->https://primary.railway.app,/ws->https://websocket.railway.app`
+- Root proxy (everything): `/->https://primary.railway.app`
+
+**HEALTH_CHECK_ENDPOINTS** (optional) - Services to wake up on startup:
 ```
 HEALTH_CHECK_ENDPOINTS=https://worker-service.railway.app/health,https://primary-service.railway.app/health,https://postgres-service.railway.app/,https://redis-service.railway.app/
 ```
@@ -48,7 +61,13 @@ The `site/` directory contains your static files served at the root path `/`.
 
 ### Environment Variables
 
-- **HEALTH_CHECK_ENDPOINTS** (required): Comma-separated list of service endpoints to wake up
+- **PROXY_ROUTES** (required): Define request routing to your backend services
+  - Format: `path->target_url,path2->target_url2`
+  - Example: `/api->https://primary.railway.app`
+  - The path will be matched first in NGINX, so more specific paths should come first
+  - Static files from `/site` directory are served as fallback
+
+- **HEALTH_CHECK_ENDPOINTS** (optional): Comma-separated list of service endpoints to wake up
   - Example: `https://service1.com/health,https://service2.com/health`
   - Each service will receive a health check on NGINX startup
   - If not set, NGINX runs without health checks
@@ -76,8 +95,31 @@ To customize nginx behavior, edit `nginx.conf.template`. The startup script will
 
 For your Railway deployment with Worker, Primary, Postgres, and Redis services:
 
-```
+**Example Configuration:**
+
+```bash
+# Route all API requests to Primary service
+PROXY_ROUTES=/api->https://primary-production-xxxx.up.railway.app
+
+# Wake up all services on startup
 HEALTH_CHECK_ENDPOINTS=https://worker-production-xxxx.up.railway.app/health,https://primary-production-xxxx.up.railway.app/health,https://postgres-production-xxxx.up.railway.app/,https://redis-production-xxxx.up.railway.app/
 ```
 
+**Complete Example (everything through Primary):**
+```bash
+# Proxy everything except static files to Primary
+PROXY_ROUTES=/api->https://primary-production-xxxx.up.railway.app,/auth->https://primary-production-xxxx.up.railway.app,/graphql->https://primary-production-xxxx.up.railway.app
+
+# Or proxy all requests to Primary (static site won't be served)
+PROXY_ROUTES=/->https://primary-production-xxxx.up.railway.app
+```
+
 Make sure to use the actual Railway-provided URLs for each service.
+
+### How Routing Works
+
+1. NGINX receives request
+2. Checks proxy routes (most specific first)
+3. If match found, forwards to backend service
+4. If no match, serves static files from `/site` directory
+5. If file not found, serves `index.html` (SPA fallback)

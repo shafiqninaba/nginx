@@ -21,14 +21,17 @@ http {
         listen 80;
         server_name _;
 
-        # Serve static site content
+        # Proxy locations will be inserted here by startup script
+        # PROXY_LOCATIONS_PLACEHOLDER
+
+        # Health check locations will be inserted here by startup script
+        # HEALTH_CHECK_LOCATIONS_PLACEHOLDER
+
+        # Serve static site content (fallback)
         location / {
             root /usr/share/nginx/html;
             index index.html;
             try_files $uri $uri/ /index.html;
         }
-
-        # Health check locations will be inserted here by startup script
-        # HEALTH_CHECK_LOCATIONS_PLACEHOLDER
     }
 }
