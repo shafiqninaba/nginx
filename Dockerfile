@@ -1,7 +1,7 @@
 FROM nginx:alpine
 
-# Install curl and wget for health checks
-RUN apk add --no-cache curl wget
+# Install curl and wget for health checks (v2)
+RUN apk add --no-cache curl wget bash
 
 # Copy static site content
 COPY site /usr/share/nginx/html
