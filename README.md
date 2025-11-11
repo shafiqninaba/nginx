@@ -21,15 +21,22 @@ In your Railway NGINX service settings, add the following environment variables:
 
 **PROXY_ROUTES** (required) - Define which paths should be proxied to your services:
 ```
-PROXY_ROUTES=/api->https://primary-production-xxxx.up.railway.app
+PROXY_ROUTES=/->primary.railway.internal
 ```
 
 Format: `path->target_url,path2->target_url2`
 
+**Important:** Use Railway internal DNS names (e.g., `primary.railway.internal`) for services in the same project.
+
 Examples:
-- Route all `/api/*` to Primary: `/api->https://primary.railway.app`
-- Multiple routes: `/api->https://primary.railway.app,/ws->https://websocket.railway.app`
-- Root proxy (everything): `/->https://primary.railway.app`
+- **Proxy everything to Primary (recommended for n8n, APIs, web apps):**
+  `/->primary.railway.internal`
+
+- Route only `/api/*` to Primary (static site served for other paths):
+  `/api->primary.railway.internal`
+
+- Multiple routes:
+  `/api->primary.railway.internal,/webhooks->primary.railway.internal`
 
 **HEALTH_CHECK_ENDPOINTS** (optional) - Services to wake up on startup:
 ```
@@ -95,26 +102,27 @@ To customize nginx behavior, edit `nginx.conf.template`. The startup script will
 
 For your Railway deployment with Worker, Primary, Postgres, and Redis services:
 
-**Example Configuration:**
+**Recommended Configuration for n8n or Full Application Proxy:**
 
 ```bash
-# Route all API requests to Primary service
-PROXY_ROUTES=/api->https://primary-production-xxxx.up.railway.app
+# Proxy ALL requests to Primary service (including root /)
+PROXY_ROUTES=/->primary.railway.internal
 
 # Wake up all services on startup
-HEALTH_CHECK_ENDPOINTS=https://worker-production-xxxx.up.railway.app/health,https://primary-production-xxxx.up.railway.app/health,https://postgres-production-xxxx.up.railway.app/,https://redis-production-xxxx.up.railway.app/
+HEALTH_CHECK_ENDPOINTS=worker.railway.internal,primary.railway.internal,postgres.railway.internal,redis.railway.internal
 ```
 
-**Complete Example (everything through Primary):**
+**Alternative: Proxy only specific paths (static site served at root):**
+
 ```bash
-# Proxy everything except static files to Primary
-PROXY_ROUTES=/api->https://primary-production-xxxx.up.railway.app,/auth->https://primary-production-xxxx.up.railway.app,/graphql->https://primary-production-xxxx.up.railway.app
+# Only proxy /api/* to Primary, serve static site for other paths
+PROXY_ROUTES=/api->primary.railway.internal
 
-# Or proxy all requests to Primary (static site won't be served)
-PROXY_ROUTES=/->https://primary-production-xxxx.up.railway.app
+# Wake up all services on startup
+HEALTH_CHECK_ENDPOINTS=worker.railway.internal,primary.railway.internal,postgres.railway.internal,redis.railway.internal
 ```
 
-Make sure to use the actual Railway-provided URLs for each service.
+**Note:** Use Railway internal service names (e.g., `primary.railway.internal`) for better performance and to avoid external routing.
 
 ### How Routing Works
 
