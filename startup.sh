@@ -122,7 +122,8 @@ else
 fi
 
 # Add static file serving (fallback) - only if root path is not already proxied
-if [ "$root_path_proxied" = false ]; then
+echo "DEBUG: root_path_proxied=$root_path_proxied"
+if [ "$root_path_proxied" = "false" ]; then
     echo "Adding static file serving for root path"
     cat >> /etc/nginx/nginx.conf <<'EOF_END'
         # Serve static site content (fallback)
