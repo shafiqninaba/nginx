@@ -40,6 +40,7 @@ http {
 EOF_START
 
 # Add proxy locations
+root_path_proxied=false
 if [ -n "$PROXY_ROUTES" ]; then
     echo "Proxy routes configured: $PROXY_ROUTES"
 
@@ -52,6 +53,11 @@ if [ -n "$PROXY_ROUTES" ]; then
             target=$(echo "$route" | cut -d'>' -f2)
 
             echo "Configuring proxy: $path -> $target"
+
+            # Check if root path is being proxied
+            if [ "$path" = "/" ]; then
+                root_path_proxied=true
+            fi
 
             cat >> /etc/nginx/nginx.conf <<EOF_PROXY
         location $path {
@@ -115,8 +121,10 @@ else
     echo "No health check endpoints configured"
 fi
 
-# Add static file serving (fallback)
-cat >> /etc/nginx/nginx.conf <<'EOF_END'
+# Add static file serving (fallback) - only if root path is not already proxied
+if [ "$root_path_proxied" = false ]; then
+    echo "Adding static file serving for root path"
+    cat >> /etc/nginx/nginx.conf <<'EOF_END'
         # Serve static site content (fallback)
         location / {
             root /usr/share/nginx/html;
@@ -126,6 +134,13 @@ cat >> /etc/nginx/nginx.conf <<'EOF_END'
     }
 }
 EOF_END
+else
+    echo "Root path is proxied, skipping static file serving"
+    cat >> /etc/nginx/nginx.conf <<'EOF_END'
+    }
+}
+EOF_END
+fi
 
 echo "Nginx configuration generated"
 
